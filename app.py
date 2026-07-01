@@ -870,12 +870,20 @@ with tab4:
 
         st.markdown("<div class='sec-head' style='margin-top:1rem'>"
                     "Grad-CAM Gallery</div>", unsafe_allow_html=True)
+        
         gradcam_dir = os.path.join(BASE,"outputs","gradcam")
-        gc_files = [f for f in os.listdir(gradcam_dir)
-                    if f.endswith('_gradcam.png')][:3]
-        if gc_files:
-            gcols = st.columns(len(gc_files))
-            for col,f in zip(gcols,gc_files):
-                col.image(os.path.join(gradcam_dir,f),
+        if os.path.exists(gradcam_dir):
+            gc_files = [f for f in os.listdir(gradcam_dir)
+                       if f.endswith('_gradcam.png')][:3]
+            if gc_files:
+               gcols = st.columns(len(gc_files))
+               for col,f in zip(gcols,gc_files):
+                    col.image(os.path.join(gradcam_dir,f),
                           caption=f.replace('_gradcam.png','')[:14],
-                          use_container_width=True)
+                          use_container_width=True,
+                          )
+            else:
+               st.info("No Grad-CAM images available")
+        else:
+            st.info("Grad-CAM gallery not found")
+        
