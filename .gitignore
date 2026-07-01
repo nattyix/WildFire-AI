@@ -1,0 +1,16 @@
+# Dataset
+data/
+
+# Generated outputs
+outputs/
+
+# Verification images
+verify_images/
+
+# Reports
+*.docx
+RiskPredFactorsValues.png
+
+# Python
+__pycache__/
+.ipynb_checkpoints/
