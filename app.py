@@ -1,8 +1,9 @@
-# app.py — WildfireAI Dashboard v4 (Fully Fixed, Zero Errors)
+# app.py — WildfireAI Dashboard (Cloud Fixed)
 import os, pickle, numpy as np, pandas as pd
 import torch, torch.nn as nn
 from torchvision import models, transforms
 from PIL import Image
+from io import BytesIO
 import matplotlib, matplotlib.cm as cm
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -11,7 +12,10 @@ import folium
 from streamlit_folium import st_folium
 import plotly.graph_objects as go
 from preprocess import BASE
-from io import BytesIO
+
+# Create required output directories on startup
+os.makedirs(os.path.join(BASE, "outputs", "gradcam"), exist_ok=True)
+os.makedirs(os.path.join(BASE, "outputs"), exist_ok=True)
 
 st.set_page_config(
     page_title="WildfireAI", page_icon="🔥",
@@ -139,6 +143,7 @@ XGB_PATH    = os.path.join(BASE, "models", "xgb_fire.pkl")
 SCALER_PATH = os.path.join(BASE, "models", "scaler.pkl")
 FUSION_PATH = os.path.join(BASE, "models", "fusion_model.pth")
 SHAP_PATH   = os.path.join(BASE, "outputs", "shap_summary.png")
+GRADCAM_DIR = os.path.join(BASE, "outputs", "gradcam")
 
 # ── MODELS ────────────────────────────────────────────────────────────────────
 @st.cache_resource
@@ -178,7 +183,7 @@ cnn_model          = load_cnn()
 fusion_model       = load_fusion()
 xgb_model, scaler = load_xgb()
 
-# ── HELPERS ───────────────────────────────────────────────────────────────────
+# ── TRANSFORMS & HELPERS ──────────────────────────────────────────────────────
 transform = transforms.Compose([
     transforms.Resize((224,224)), transforms.ToTensor(),
     transforms.Normalize([.485,.456,.406],[.229,.224,.225])
@@ -247,32 +252,6 @@ def build_tab_vec(temp, rh, wind, rain, ffmc, dmc, dc, isi):
     v[0, cols.index('dc_wind_interaction')] = dc * wind
     v[0, cols.index('dryness_score')]       = ffmc + dmc + dc / 10
     return v
-
-def plotly_layout(height=280, extra=None):
-    """
-    Returns a safe update_layout dict with NO hex+opacity color strings.
-    All colors use proper rgba() format so Plotly never rejects them.
-    """
-    base = dict(
-        height=height,
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(family='Inter', color='#aaa'),
-        showlegend=False,
-        margin=dict(l=40, r=20, t=20, b=20),
-        yaxis=dict(
-            gridcolor='rgba(255,255,255,0.05)',   # safe rgba — NOT hex+opacity
-            zerolinecolor='rgba(255,255,255,0.05)',
-            tickfont=dict(color='#555'),
-        ),
-        xaxis=dict(
-            tickfont=dict(color='#aaa', size=12),
-            gridcolor='rgba(255,255,255,0.05)',
-        ),
-    )
-    if extra:
-        base.update(extra)
-    return base
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -383,8 +362,9 @@ with tab1:
         </div>""", unsafe_allow_html=True)
 
         if not uploaded:
-            gradcam_dir = os.path.join(BASE, "outputs", "gradcam")
-            samples = [f for f in os.listdir(gradcam_dir)
+            # Safe directory check — creates folder if missing, never crashes
+            os.makedirs(GRADCAM_DIR, exist_ok=True)
+            samples = [f for f in os.listdir(GRADCAM_DIR)
                        if f.endswith('_gradcam.png')][:2]
             if samples:
                 st.markdown(
@@ -393,13 +373,15 @@ with tab1:
                     unsafe_allow_html=True)
                 sc1, sc2 = st.columns(2)
                 for col, f in zip([sc1,sc2], samples):
-                    col.image(os.path.join(gradcam_dir,f), use_container_width=True)
+                    col.image(os.path.join(GRADCAM_DIR, f),
+                              use_container_width=True)
 
     with c_res:
         if uploaded:
-            img_bytes = uploaded.read()
-            img_pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+            img_bytes  = uploaded.read()
+            img_pil    = Image.open(BytesIO(img_bytes)).convert('RGB')
             img_tensor = transform(img_pil).unsqueeze(0)
+
             with st.spinner("🔍 Analyzing image..."):
                 cam, pred, conf = run_gradcam(img_tensor)
                 with torch.no_grad():
@@ -780,7 +762,6 @@ with tab4:
     st.markdown("<div class='sec-head'>Model Explainability & Architecture</div>",
                 unsafe_allow_html=True)
 
-    # Performance bar chart — all colors use rgba(), zero hex+opacity strings
     fig_perf = go.Figure()
     fig_perf.add_trace(go.Bar(
         x=["CNN Alone","XGBoost Alone","Fusion (Ours)"],
@@ -793,11 +774,8 @@ with tab4:
         width=.45
     ))
     fig_perf.add_hline(
-        y=95,
-        line_dash="dash",
-        line_color="#ff4d00",       # plain 6-digit hex only
-        opacity=0.5,                # opacity as separate arg — NOT in the hex
-        annotation_text="95% target",
+        y=95, line_dash="dash", line_color="#ff4d00",
+        opacity=0.5, annotation_text="95% target",
         annotation_font_color="#ff8c42"
     )
     fig_perf.update_layout(
@@ -809,7 +787,7 @@ with tab4:
         margin=dict(l=40,r=20,t=20,b=20),
         yaxis=dict(
             range=[0,115],
-            gridcolor='rgba(255,255,255,0.05)',    # rgba — the only safe format
+            gridcolor='rgba(255,255,255,0.05)',
             zerolinecolor='rgba(255,255,255,0.05)',
             tickfont=dict(color='#555'),
             title=dict(text='Accuracy %',
@@ -830,7 +808,7 @@ with tab4:
         if os.path.exists(SHAP_PATH):
             st.image(SHAP_PATH, use_container_width=True)
         else:
-            st.warning("Run train_tabular.py to generate SHAP plot")
+            st.warning("SHAP plot not available in cloud deployment.")
 
     with i2:
         st.markdown("<div class='sec-head'>Architecture Summary</div>",
@@ -870,20 +848,17 @@ with tab4:
 
         st.markdown("<div class='sec-head' style='margin-top:1rem'>"
                     "Grad-CAM Gallery</div>", unsafe_allow_html=True)
-        
-        gradcam_dir = os.path.join(BASE,"outputs","gradcam")
-        if os.path.exists(gradcam_dir):
-            gc_files = [f for f in os.listdir(gradcam_dir)
-                       if f.endswith('_gradcam.png')][:3]
-            if gc_files:
-               gcols = st.columns(len(gc_files))
-               for col,f in zip(gcols,gc_files):
-                    col.image(os.path.join(gradcam_dir,f),
+
+        # Safe directory check — never crashes if folder missing
+        os.makedirs(GRADCAM_DIR, exist_ok=True)
+        gc_files = [f for f in os.listdir(GRADCAM_DIR)
+                    if f.endswith('_gradcam.png')][:3]
+        if gc_files:
+            gcols = st.columns(len(gc_files))
+            for col,f in zip(gcols,gc_files):
+                col.image(os.path.join(GRADCAM_DIR,f),
                           caption=f.replace('_gradcam.png','')[:14],
-                          use_container_width=True,
-                          )
-            else:
-               st.info("No Grad-CAM images available")
+                          use_container_width=True)
         else:
-            st.info("Grad-CAM gallery not found")
-        
+            st.info("Grad-CAM gallery not available in cloud deployment. "
+                    "Upload an image in the Fire Detection tab to generate live Grad-CAM.")
