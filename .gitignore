@@ -13,3 +13,7 @@ RiskPredFactorsValues.png
 # Python
 __pycache__/
 .ipynb_checkpoints/
+
+data/
+!data/tabular/
+!data/tabular/forestfires.csv

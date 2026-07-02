@@ -815,24 +815,28 @@ with tab4:
             import shap
             import pandas as pd
             from preprocess import CSV_PATH
-            df_s = pd.read_csv(CSV_PATH)
-            df_s = pd.get_dummies(df_s, columns=['month','day'])
-            df_s['label'] = (df_s['area'] > 0).astype(int)
-            df_s['temp_humidity_ratio'] = df_s['temp']/(df_s['RH']+1)
-            df_s['ffmc_isi_product']    = df_s['FFMC']*df_s['ISI']
-            df_s['dc_wind_interaction'] = df_s['DC']*df_s['wind']
-            df_s['dryness_score'] = df_s['FFMC']+df_s['DMC']+(df_s['DC']/10)
-            X_s = df_s.drop(columns=['label'])
-            X_sc = scaler.transform(X_s)
-            explainer   = shap.TreeExplainer(xgb_model)
-            shap_values = explainer.shap_values(X_sc)
-            fig_shap, ax_shap = plt.subplots(figsize=(10,6))
-            fig_shap.patch.set_facecolor('#0f0800')
-            shap.summary_plot(shap_values, X_s,
+            if not os.path.exists(CSV_PATH):
+                st.warning("Dataset not available in this deployment.")
+            else:
+                df_s = pd.read_csv(CSV_PATH)
+                df_s = pd.get_dummies(df_s, columns=['month','day'])
+                df_s['label'] = (df_s['area'] > 0).astype(int)
+                df_s = df_s.drop(columns=['area'])
+                df_s['temp_humidity_ratio'] = df_s['temp']/(df_s['RH']+1)
+                df_s['ffmc_isi_product']    = df_s['FFMC']*df_s['ISI']
+                df_s['dc_wind_interaction'] = df_s['DC']*df_s['wind']
+                df_s['dryness_score'] = df_s['FFMC']+df_s['DMC']+(df_s['DC']/10)
+                X_s = df_s.drop(columns=['label'])
+                X_sc = scaler.transform(X_s)
+                explainer   = shap.TreeExplainer(xgb_model)
+                shap_values = explainer.shap_values(X_sc)
+                fig_shap, ax_shap = plt.subplots(figsize=(10,6))
+                fig_shap.patch.set_facecolor('#0f0800')
+                shap.summary_plot(shap_values, X_s,
                       feature_names=list(X_s.columns),
                       show=False, max_display=12)
-            st.pyplot(fig_shap)
-            plt.close()
+                st.pyplot(fig_shap)
+                plt.close()
 
     with i2:
         st.markdown("<div class='sec-head'>Architecture Summary</div>",
