@@ -12,6 +12,7 @@ import folium
 from streamlit_folium import st_folium
 import plotly.graph_objects as go
 from preprocess import BASE
+from streamlit.components.v1 import html
 
 # Create required output directories on startup
 os.makedirs(os.path.join(BASE, "outputs", "gradcam"), exist_ok=True)
@@ -710,7 +711,9 @@ with tab3:
             Click markers for details</div>
     </div>"""))
 
-    st_folium(m, width=None, height=520)
+    map_html = m._repr_html_()
+    html(map_html, height=520)
+
 
     st.markdown("<div style='margin-top:1.2rem'></div>", unsafe_allow_html=True)
     st.markdown("<div class='sec-head'>Zone Summary — All Regions</div>",
@@ -808,7 +811,28 @@ with tab4:
         if os.path.exists(SHAP_PATH):
             st.image(SHAP_PATH, use_container_width=True)
         else:
-            st.warning("SHAP plot not available in cloud deployment.")
+            st.info("Generating SHAP analysis live...")
+            import shap
+            import pandas as pd
+            from preprocess import CSV_PATH
+            df_s = pd.read_csv(CSV_PATH)
+            df_s = pd.get_dummies(df_s, columns=['month','day'])
+            df_s['label'] = (df_s['area'] > 0).astype(int)
+            df_s['temp_humidity_ratio'] = df_s['temp']/(df_s['RH']+1)
+            df_s['ffmc_isi_product']    = df_s['FFMC']*df_s['ISI']
+            df_s['dc_wind_interaction'] = df_s['DC']*df_s['wind']
+            df_s['dryness_score'] = df_s['FFMC']+df_s['DMC']+(df_s['DC']/10)
+            X_s = df_s.drop(columns=['label'])
+            X_sc = scaler.transform(X_s)
+            explainer   = shap.TreeExplainer(xgb_model)
+            shap_values = explainer.shap_values(X_sc)
+            fig_shap, ax_shap = plt.subplots(figsize=(10,6))
+            fig_shap.patch.set_facecolor('#0f0800')
+            shap.summary_plot(shap_values, X_s,
+                      feature_names=list(X_s.columns),
+                      show=False, max_display=12)
+            st.pyplot(fig_shap)
+            plt.close()
 
     with i2:
         st.markdown("<div class='sec-head'>Architecture Summary</div>",
