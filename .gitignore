@@ -1,8 +1,7 @@
 # Dataset
 data/
 
-# Generated outputs
-outputs/
+
 
 # Verification images
 verify_images/
